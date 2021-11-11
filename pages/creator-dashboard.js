@@ -3,89 +3,67 @@ import React from "react";
 import { ethers } from "ethers";
 import axios from "axios";
 import Web3Modal from "web3modal";
+
 import { nftAddress, nftMarketAddress } from "../config";
 
 import NFTMarket from "../artifacts/contracts/NFTMarket.sol/NFTMarket.json";
 import NFT from "../artifacts/contracts/NFT.sol/NFT.json";
 
-export default function Home() {
+export default function CreatorDashboard() {
   const [nfts, setNfts] = React.useState([]);
-  const [loadingState, setLoadingState] = React.useState("idle");
+  const [sold, setSold] = React.useState([]);
+  const [loadingState, setLoadingState] = React.useState("not-loaded");
 
   React.useEffect(() => {
     loadNFTs();
   }, []);
 
   async function loadNFTs() {
-    const provider = new ethers.providers.JsonRpcProvider();
-    const tokenContract = new ethers.Contract(nftAddress, NFT.abi, provider);
-    const marketContract = new ethers.Contract(
-      nftMarketAddress,
-      NFTMarket.abi,
-      provider
-    );
-
-    const data = await marketContract.fetchMarketItems();
-
-    const items = await Promise.all(
-      data.map(async (i) => {
-        const tokenUri = await tokenContract.tokenURI(i.tokenId);
-        const metadata = await axios.get(tokenUri);
-        const price = ethers.utils.formatUnits(i.price.toString(), "ether");
-
-        return {
-          price,
-          tokenId: i.tokenId.toNumber(),
-          seller: i.seller,
-          owner: i.owner,
-          image: metadata.data.image,
-          name: metadata.data.name,
-          description: metadata.data.description,
-        };
-      })
-    );
-
-    setNfts(items);
-    setLoadingState("loaded");
-  }
-
-  async function buyNFT(nft) {
     const web3Modal = new Web3Modal();
     const connection = await web3Modal.connect();
     const provider = new ethers.providers.Web3Provider(connection);
-
     const signer = provider.getSigner();
 
-    const contract = new ethers.Contract(
+    const marketContract = new ethers.Contract(
       nftMarketAddress,
       NFTMarket.abi,
       signer
     );
+    const tokenContract = new ethers.Contract(nftAddress, NFT.abi, provider);
+    const data = await marketContract.fetchItemsCreated();
 
-    const price = ethers.utils.parseUnits(nft.price.toString(), "ether");
-
-    const transaction = await contract.createMarketSale(
-      nftAddress,
-      nft.tokenId,
-      { value: price }
+    const items = await Promise.all(
+      data.map(async (i) => {
+        const tokenUri = await tokenContract.tokenURI(i.tokenId);
+        const meta = await axios.get(tokenUri);
+        let price = ethers.utils.formatUnits(i.price.toString(), "ether");
+        let item = {
+          price,
+          tokenId: i.tokenId.toNumber(),
+          seller: i.seller,
+          owner: i.owner,
+          sold: i.sold,
+          image: meta.data.image,
+        };
+        return item;
+      })
     );
-    await transaction.wait();
-    loadNFTs();
-  }
 
-  if (loadingState === "idle") {
-    return null;
+    const soldItems = items.filter((i) => i.sold);
+    setSold(soldItems);
+    setNfts(items);
+    setLoadingState("loaded");
   }
 
   return (
     <div className="bg-white">
       <div className="max-w-2xl mx-auto py-16 px-4 sm:py-24 sm:px-6 lg:max-w-7xl lg:px-8">
         <h2 className="text-2xl font-extrabold tracking-tight text-gray-900">
-          Home
+          Items created
         </h2>
         <div className="mt-6 grid grid-cols-1 gap-y-10 gap-x-6 sm:grid-cols-2 lg:grid-cols-4 xl:gap-x-8">
           {loadingState === "loaded" && !nfts.length ? (
-            <h1>No items on the marketplace</h1>
+            <h1>No assets owned</h1>
           ) : null}
           {nfts.map((nft) => (
             <div key={nft.tokenId} className="group relative">
@@ -133,15 +111,6 @@ export default function Home() {
                     <span className="text-xs text-gray-500">MATIC</span>
                   </div>
                 </div>
-              </div>
-              <div className="mt-4 flex justify-end">
-                <button
-                  type="button"
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                  onClick={() => buyNFT(nft)}
-                >
-                  Buy
-                </button>
               </div>
             </div>
           ))}
